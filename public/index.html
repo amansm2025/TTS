@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Text-to-Speech Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        h1 { text-align: center; margin-bottom: 30px; }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        select, textarea, button {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover { background: #45a049; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .audio-result {
+            margin-top: 20px;
+            text-align: center;
+        }
+        audio { width: 100%; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 AI Text-to-Speech Tool</h1>
+        
+        <div class="form-group">
+            <label>TTS Provider:</label>
+            <select id="provider">
+                <option value="free">🆓 Free Web Speech API</option>
+                <!-- <option value="google">Google Cloud TTS (Requires API Key)</option>
+                <option value="polly">Amazon Polly (Requires API Key)</option>
+                <option value="azure">Azure Speech (Requires API Key)</option> -->
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Language & Accent:</label>
+            <select id="language">
+                <option value="en-US">English (US) - American</option>
+                <!-- <option value="en-IN">English (India) - Indian</option> -->
+                <option value="hi-IN">Hindi (India) - Indian</option>
+                <option value="en-GB">English (UK) - British</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Voice:</label>
+            <select id="voice">
+                <option value="en-US-Wavenet-A">Female Voice A</option>
+                <option value="en-US-Wavenet-B">Male Voice B</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Enter Text:</label>
+            <textarea id="text" placeholder="Type your text here...
+
+English: Hello, this is a test of the text-to-speech system.
+
+"></textarea>
+        </div>
+
+        <button onclick="convertText()" id="convertBtn">🎵 Convert to Speech</button>
+        <button onclick="checkVoices()" style="background: #2196F3; margin-top: 10px;">🔍 Check Available Voices</button>
+
+        <div id="result" class="audio-result" style="display:none;">
+            <h3>Generated Audio:</h3>
+            <audio id="audioPlayer" controls></audio>
+            <br>
+            <a id="downloadLink" download="speech.mp3">📥 Download Audio</a>
+        </div>
+    </div>
+
+    <script src="https://code.responsivevoice.org/responsivevoice.js?key=FREE"></script>
+    <script>
+        async function convertText() {
+            const text = document.getElementById('text').value;
+            const provider = document.getElementById('provider').value;
+            const btn = document.getElementById('convertBtn');
+
+            if (!text.trim()) {
+                alert('Please enter some text');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = '🔄 Converting...';
+
+            try {
+                if (provider === 'free') {
+                    // Use server-side free TTS for Hindi, browser TTS for others
+                    const language = document.getElementById('language').value;
+                    if (language === 'hi-IN' || language === 'en-US') {
+                        await convertWithServerTTS(text, language);
+                    } else {
+                        await convertWithWebAPI(text);
+                    }
+                } else {
+                    // Use cloud APIs (requires keys)
+                    const response = await fetch('/api/tts/convert', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text, provider, language: document.getElementById('language').value, voice: document.getElementById('voice').value })
+                    });
+
+                    if (response.ok) {
+                        const audioBlob = await response.blob();
+                        const audioUrl = URL.createObjectURL(audioBlob);
+                        
+                        document.getElementById('audioPlayer').src = audioUrl;
+                        document.getElementById('downloadLink').href = audioUrl;
+                        document.getElementById('result').style.display = 'block';
+                    } else {
+                        const error = await response.json();
+                        alert('Error: ' + (error.error || 'Failed to convert text'));
+                    }
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🎵 Convert to Speech';
+            }
+        }
+
+        function convertWithWebAPI(text) {
+            const language = document.getElementById('language').value;
+            
+            // Force load voices first
+            const voices = speechSynthesis.getVoices();
+            if (voices.length === 0) {
+                // Wait for voices to load
+                speechSynthesis.addEventListener('voiceschanged', () => {
+                    convertWithWebAPI(text);
+                }, { once: true });
+                return Promise.resolve();
+            }
+            
+            if (language === 'hi-IN' && window.responsiveVoice) {
+                // Use ResponsiveVoice for Hindi
+                console.log('Using ResponsiveVoice for Hindi');
+                responsiveVoice.speak(text, "Hindi Female", {
+                    rate: 0.8,
+                    pitch: 1,
+                    onstart: () => console.log('Speech started'),
+                    onend: () => {
+                        console.log('Speech ended');
+                        alert('✅ Hindi speech completed!');
+                    },
+                    onerror: (e) => {
+                        console.error('ResponsiveVoice error:', e);
+                        fallbackToWebSpeech(text, language);
+                    }
+                });
+                return Promise.resolve();
+            } else {
+                return fallbackToWebSpeech(text, language);
+            }
+        }
+        
+        async function convertWithServerTTS(text, language) {
+            const selectedVoice = document.getElementById('voice').value;
+            console.log('Converting with voice:', selectedVoice);
+            
+            // Use different synthesis methods for each voice
+            switch(selectedVoice) {
+                case 'Kavya':
+                    await synthesizeKavya(text);
+                    break;
+                // case 'Dhruv':
+                //     await synthesizeDhruv(text);
+                //     break;
+                // case 'Arjun':
+                //     await synthesizeArjun(text);
+                //     break;
+                // case 'Priya':
+                //     await synthesizePriya(text);
+                //     break;
+                // case 'Aditi':
+                //     await synthesizeAditi(text);
+                //     break;
+                // case 'Ravi':
+                //     await synthesizeRavi(text);
+                //     break;
+                // case 'Ananya':
+                //     await synthesizeAnanya(text);
+                //     break;
+                default:
+                    await synthesizeKavya(text);
+            }
+        }
+        
+        // Kavya - Sweet female voice (Google Translate)
+        async function synthesizeKavya(text) {
+            try {
+                const response = await fetch('/api/tts/convert', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, provider: 'free', language: 'hi-IN', voice: 'kavya' })
+                });
+                
+                if (response.ok) {
+                    const audioBlob = await response.blob();
+                    playAudioWithEffect(audioBlob, 'sweet');
+                } else {
+                    fallbackWebSpeech(text, 0.9, 1.1, 'Kavya');
+                }
+            } catch (error) {
+                fallbackWebSpeech(text, 0.9, 1.1, 'Kavya');
+            }
+        }
+        
+        // Dhruv - Deep male voice (ResponsiveVoice)
+        // async function synthesizeDhruv(text) {
+        //     if (window.responsiveVoice) {
+        //         responsiveVoice.speak(text, "Hindi Male", {
+        //             rate: 0.7,
+        //             pitch: 0.3,
+        //             volume: 1,
+        //             onend: () => alert('🎤 Dhruv (Deep Male) finished speaking')
+        //         });
+        //     } else {
+        //         fallbackWebSpeech(text, 0.7, 0.6, 'Dhruv (Deep)');
+        //     }
+        // }
+        
+        // Arjun - Robot-like clear voice
+        // async function synthesizeArjun(text) {
+        //     const robotText = text.split('').join(' ');
+        //     if (window.responsiveVoice) {
+        //         responsiveVoice.speak(robotText, "Hindi Male", {
+        //             rate: 1.2,
+        //             pitch: 0.8,
+        //             volume: 1,
+        //             onend: () => alert('🤖 Arjun (Robot-like) finished speaking')
+        //         });
+        //     } else {
+        //         fallbackWebSpeech(robotText, 1.2, 0.8, 'Arjun (Robot)');
+        //     }
+        // }
+        
+        // Priya - Whisper-like soft voice
+        // async function synthesizePriya(text) {
+        //     const whisperText = text.replace(/।/g, '...').replace(/!/g, '...');
+        //     if (window.responsiveVoice) {
+        //         responsiveVoice.speak(whisperText, "Hindi Female", {
+        //             rate: 0.6,
+        //             pitch: 1.5,
+        //             volume: 0.5,
+        //             onend: () => alert('🤫 Priya (Whisper) finished speaking')
+        //         });
+        //     } else {
+        //         fallbackWebSpeech(whisperText, 0.6, 1.5, 'Priya (Whisper)');
+        //     }
+        // }
+        
+        // Aditi - Echo effect voice
+        // async function synthesizeAditi(text) {
+        //     const echoText = text.split(' ').map(word => word + '... ' + word).join(' ');
+        //     if (window.responsiveVoice) {
+        //         responsiveVoice.speak(echoText, "Hindi Female", {
+        //             rate: 0.8,
+        //             pitch: 1.2,
+        //             volume: 0.7,
+        //             onend: () => alert('🔊 Aditi (Echo) finished speaking')
+        //         });
+        //     } else {
+        //         fallbackWebSpeech(echoText, 0.8, 1.2, 'Aditi (Echo)');
+        //     }
+        // }
+        
+        // Ravi - Authoritative slow voice
+        // async function synthesizeRavi(text) {
+        //     const authText = text.toUpperCase().replace(/।/g, '। । ।');
+        //     if (window.responsiveVoice) {
+        //         responsiveVoice.speak(authText, "Hindi Male", {
+        //             rate: 0.4,
+        //             pitch: 0.2,
+        //             volume: 1,
+        //             onend: () => alert('👑 Ravi (Authoritative) finished speaking')
+        //         });
+        //     } else {
+        //         fallbackWebSpeech(authText, 0.4, 0.2, 'Ravi (Authority)');
+        //     }
+        // }
+        
+        // Ananya - Chipmunk-like energetic voice
+        // async function synthesizeAnanya(text) {
+        //     const chipmunkText = text.replace(/।/g, '!!!').replace(/ /g, '! ');
+        //     if (window.responsiveVoice) {
+        //         responsiveVoice.speak(chipmunkText, "Hindi Female", {
+        //             rate: 1.8,
+        //             pitch: 2.0,
+        //             volume: 1,
+        //             onend: () => alert('🐹 Ananya (Chipmunk) finished speaking')
+        //         });
+        //     } else {
+        //         fallbackWebSpeech(chipmunkText, 1.8, 2.0, 'Ananya (Chipmunk)');
+        //     }
+        // }
+        
+        // Fallback Web Speech function
+        function fallbackWebSpeech(text, rate, pitch, voiceName) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'hi-IN';
+            utterance.rate = rate;
+            utterance.pitch = pitch;
+            utterance.volume = 1;
+            
+            utterance.onend = () => alert(`🎤 ${voiceName} finished speaking`);
+            speechSynthesis.speak(utterance);
+        }
+        
+        // Audio effect player
+        function playAudioWithEffect(audioBlob, effect) {
+            const audioUrl = URL.createObjectURL(audioBlob);
+            document.getElementById('audioPlayer').src = audioUrl;
+            document.getElementById('downloadLink').href = audioUrl;
+            document.getElementById('result').style.display = 'block';
+            
+            alert(`🎵 Audio generated with ${effect} effect!`);
+        }
+        
+        function fallbackToWebSpeech(text, language) {
+            return new Promise((resolve, reject) => {
+                console.log('Using Web Speech API');
+                const utterance = new SpeechSynthesisUtterance(text);
+                const voices = speechSynthesis.getVoices();
+                
+                console.log('Available voices:', voices.length);
+                console.log('Target language:', language);
+                
+                utterance.lang = language;
+                utterance.rate = 0.8;
+                utterance.pitch = 1;
+                utterance.volume = 1;
+                
+                // Find Hindi voice
+                if (language === 'hi-IN') {
+                    const hindiVoices = voices.filter(v => 
+                        v.lang.includes('hi') || 
+                        v.name.toLowerCase().includes('hindi') ||
+                        v.lang === 'hi-IN'
+                    );
+                    console.log('Hindi voices found:', hindiVoices);
+                    if (hindiVoices.length > 0) {
+                        utterance.voice = hindiVoices[0];
+                        console.log('Selected voice:', hindiVoices[0].name);
+                    }
+                }
+                
+                utterance.onstart = () => console.log('Speech started');
+                utterance.onend = () => {
+                    console.log('Speech ended');
+                    alert('✅ Speech completed!');
+                    resolve();
+                };
+                utterance.onerror = (e) => {
+                    console.error('Speech error:', e);
+                    alert('❌ Speech failed: ' + e.error);
+                    reject(e);
+                };
+                
+                // Cancel any ongoing speech
+                speechSynthesis.cancel();
+                
+                // Start speaking
+                setTimeout(() => {
+                    speechSynthesis.speak(utterance);
+                }, 100);
+            });
+        }
+
+        // Load available voices on page load
+        window.addEventListener('load', function() {
+            loadVoices();
+            speechSynthesis.addEventListener('voiceschanged', loadVoices);
+        });
+
+        function loadVoices() {
+            const voices = speechSynthesis.getVoices();
+            const voiceSelect = document.getElementById('voice');
+            
+            voiceSelect.innerHTML = '';
+            voices.forEach(voice => {
+                const option = document.createElement('option');
+                option.value = voice.name;
+                option.textContent = `${voice.name} (${voice.lang})`;
+                voiceSelect.appendChild(option);
+            });
+        }
+
+        // Update voices based on provider selection
+        document.getElementById('provider').addEventListener('change', function() {
+            if (this.value === 'free') {
+                loadVoices();
+            }
+        });
+
+        // Update voices based on language selection
+        document.getElementById('language').addEventListener('change', function() {
+            const language = this.value;
+            const voiceSelect = document.getElementById('voice');
+            
+            const voices = {
+                'en-US': [
+                    { value: 'en-US-Wavenet-A', text: 'Female Voice A (Wavenet)' },
+                    { value: 'en-US-Wavenet-B', text: 'Male Voice B (Wavenet)' },
+                    { value: 'en-US-Wavenet-C', text: 'Female Voice C (Wavenet)' },
+                    { value: 'en-US-Wavenet-D', text: 'Male Voice D (Wavenet)' }
+                ],
+                'en-IN': [
+                    { value: 'en-IN-Wavenet-A', text: 'Female Voice A (Indian)' },
+                    { value: 'en-IN-Wavenet-B', text: 'Male Voice B (Indian)' },
+                    { value: 'en-IN-Wavenet-C', text: 'Male Voice C (Indian)' },
+                    { value: 'en-IN-Wavenet-D', text: 'Female Voice D (Indian)' }
+                ],
+                'hi-IN': [
+                    { value: 'Kavya', text: '👩 Kavya (Female) - Standard Voice' }
+                    // { value: 'Dhruv', text: '👨 Dhruv (Male) - Deep Voice' },
+                    // { value: 'Arjun', text: '👨 Arjun (Male) - Clear Voice' },
+                    // { value: 'Priya', text: '👩 Priya (Female) - Soft Voice' },
+                    // { value: 'Aditi', text: '👩 Aditi (Female) - Bilingual Voice' },
+                    // { value: 'Ravi', text: '👨 Ravi (Male) - Mature Voice' },
+                    // { value: 'Ananya', text: '👧 Ananya (Female) - Young Voice' }
+                ],
+                'en-GB': [
+                    { value: 'en-GB-Wavenet-A', text: 'Female Voice A (British)' },
+                    { value: 'en-GB-Wavenet-B', text: 'Male Voice B (British)' },
+                    { value: 'en-GB-Wavenet-C', text: 'Female Voice C (British)' },
+                    { value: 'en-GB-Wavenet-D', text: 'Male Voice D (British)' }
+                ]
+            };
+
+            voiceSelect.innerHTML = '';
+            voices[language].forEach(voice => {
+                const option = document.createElement('option');
+                option.value = voice.value;
+                option.textContent = voice.text;
+                voiceSelect.appendChild(option);
+            });
+        });
+        
+        function checkVoices() {
+            const voices = speechSynthesis.getVoices();
+            console.log('Total voices:', voices.length);
+            
+            const hindiVoices = voices.filter(v => 
+                v.lang.includes('hi') || 
+                v.name.toLowerCase().includes('hindi') ||
+                v.lang === 'hi-IN'
+            );
+            
+            let message = `Total voices: ${voices.length}\n`;
+            message += `Hindi voices: ${hindiVoices.length}\n\n`;
+            
+            if (hindiVoices.length > 0) {
+                message += 'Available Hindi voices:\n';
+                hindiVoices.forEach(v => {
+                    message += `- ${v.name} (${v.lang})\n`;
+                });
+            } else {
+                message += 'No Hindi voices found.\n';
+                message += 'First 5 voices:\n';
+                voices.slice(0, 5).forEach(v => {
+                    message += `- ${v.name} (${v.lang})\n`;
+                });
+            }
+            
+            alert(message);
+        }
+    </script>
+</body>
+</html>
